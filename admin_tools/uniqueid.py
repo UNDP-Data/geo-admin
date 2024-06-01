@@ -18,25 +18,47 @@ places  degrees                       recognized at this scale                 a
 -------------------------------------------------------------------------------------------------------------------------
 '''
 
-def interleave_bits(x, y):
-    """Interleave bits of two integers."""
-    result = 0
-    for i in range(max(x.bit_length(), y.bit_length())):
-        result |= ((x >> i) & 1) << (2 * i)
-        result |= ((y >> i) & 1) << (2 * i + 1)
-    return result
+import math
 
+def map_int(n):
+    return 2 * abs(n) if n >= 0 else 2 * abs(n) - 1
 
-def deinterleave_bits(result):
-    """De-interleave bits of an integer to reconstruct two original integers."""
-    x = 0
-    y = 0
-    for i in range(result.bit_length()):
-        if i % 2 == 0:
-            x |= ((result >> i) & 1) << (i // 2)
-        else:
-            y |= ((result >> i) & 1) << (i // 2)
+def unmap_int(m):
+    return m // 2 if m % 2 == 0 else -(m // 2) - 1
+
+def cantor_encode(x, y):
+    """
+    Ecode two integer number to a positive number using Cantor's pairing
+    funcntion
+    :param x:
+    :param y:
+    :return:
+    """
+    mapped_x = map_int(x)
+    mapped_y = map_int(y)
+    return (mapped_x + mapped_y) * (mapped_x + mapped_y + 1) // 2 + mapped_y
+
+def cantor_decode(z):
+    """
+    Decode an integer number into two integers suing invers or Cantor's pairing function
+
+    :param z:
+    :return:
+    """
+    w = math.floor((math.sqrt(8 * z + 1) - 1) / 2)
+    t = (w * (w + 1)) // 2
+    mapped_y = z - t
+    mapped_x = w - mapped_y
+    x = unmap_int(mapped_x)
+    y = unmap_int(mapped_y)
     return x, y
+
+
+def get_precision(cantor_encoded_coords=None):
+    ndigits = len(str(cantor_encoded_coords))
+    print(ndigits)
+    return int((ndigits-2)//2)
+
 
 def encode_base36(num):
     """Encode a number in base-36 with padding."""
@@ -76,14 +98,21 @@ def admin0_id2iso3(admin0id=None):
     return ''.join(map(chr, map(int, (strid[idx: idx + chunk_size] for idx in range(0, idlen, chunk_size)))))
 
 
-def centroid2id(
-                  x_centroid=None,
-                  y_centroid=None,
-                  precision=1e3):
-    #print(x_centroid, y_centroid)
-    xrel = int(x_centroid // (1/precision))
-    yrel = int(y_centroid // (1/precision))
-    return interleave_bits(xrel, yrel)
+def latlon2id(lon=None, lat=None, precision=1e3):
+    """
+    Create an id form 2 float lat lon cooords by divind using  1/precision
+    flooring to integer and encoding.
+    Precision can not be more than 6
+
+    :param lon:
+    :param lat:
+    :param precision:
+    :return:
+    """
+
+    xrel = int(lon // (1 / precision))
+    yrel = int(lat // (1 / precision))
+    return cantor_encode(xrel, yrel)
 
 
 
@@ -146,9 +175,9 @@ def read_adm1(src_path=None):
 
             if geom is not None:
                 c = geom.Centroid()
-                a1id = centroid2id(
-                                     x_centroid=c.GetX(),
-                                     y_centroid=c.GetY(),
+                a1id = latlon2id(
+                                     lon=c.GetX(),
+                                     lat=c.GetY(),
                                      precision=1e3
                                      )
                 ea1id = encode_base36(a1id)
@@ -181,56 +210,61 @@ def dissolve(lyr=None):
     return multi
 
 
-def read_adm2(src_path=None):
+def read_adm2(src_path=None, precision=1e3):
+
+    assert str(int(precision)).count("0")<7, 'precision is invalid'
     thel = list()
     ds = gdal.OpenEx(src_path)
     l = ds.GetLayer(0)
     iso3_codes_l = [f.GetField('iso_3_grp') for f in l]
     iso3_codes = set(iso3_codes_l)
-    #with open('/data/hreaibm/admfieldmaps/a1.csv', 'w') as srca1:
-        #srca1.write(f'admin1_name,a1id\n' )
-    for cc in sorted(iso3_codes):
-        #convert iso3 code to int using ord functions
+    with open('/data/hreaibm/admfieldmaps/a2.csv', 'w') as srca1:
+        srca1.write(f'adm2_id,a2id\n' )
+        for cc in sorted(iso3_codes):
+            #convert iso3 code to int using ord functions
+            #if cc != 'AUS':continue
+            a0id = admin0_iso32id(iso3_country_code=cc)
+            l.SetAttributeFilter(f"iso_3_grp='{cc}'")
 
-        a0id = admin0_iso32id(iso3_country_code=cc)
-        l.SetAttributeFilter(f"iso_3_grp='{cc}'")
+            adm1_ids = sorted(set([f.GetField('adm1_id') for f in l]))
+            print(f'{cc} {a0id}')
+            for admin1id in adm1_ids:
+                l.SetAttributeFilter(f"adm1_id='{admin1id}'")
 
-        adm1_ids = sorted(set([f.GetField('adm1_id') for f in l]))
-        print(f'{cc} : {a0id}')
-        for admin1id in adm1_ids:
-            l.SetAttributeFilter(f"adm1_id='{admin1id}'")
-            adm1_geom = dissolve(lyr=l)
-            adm1_centroid = adm1_geom.Centroid()
-            a1id = centroid2id(x_centroid=adm1_centroid.GetX(), y_centroid=adm1_centroid.GetY(), precision=1e3)
-            thel.append(a1id)
-            for feature in l:
+                adm1_geom = dissolve(lyr=l)
+                adm1_centroid = adm1_geom.Centroid()
+                a1id = latlon2id(lon=adm1_centroid.GetX(), lat=adm1_centroid.GetY(), precision=precision)
+                #thel.append(a1id)
+                print(f'\t{admin1id} {a1id} ')
+                for feature in l:
 
-                olda2id = feature.GetField('adm2_id')
-                a1name = feature.GetField('adm1_name')
-                a2name = feature.GetField('adm2_name')
+                    olda2id = feature.GetField('adm2_id')
+                    a1name = feature.GetField('adm1_name')
+                    a2name = feature.GetField('adm2_name')
 
-                geom = feature.GetGeometryRef()
+                    geom = feature.GetGeometryRef()
 
-                if geom is not None:
-                    c = geom.Centroid()
-                    a2id = centroid2id(
-                                         x_centroid=c.GetX(),
-                                         y_centroid=c.GetY(),
-                                         precision=1e3
-                                         )
-                    ea2id = encode_base36(a2id)
-                    ra2id = decode_base36(ea2id)
-                    assert a2id == ra2id
-                    #print(f'a1name: {a1name} a1id {a1id} a2name {a2name} a2id {a2id}')
-                    print(f'adm1name {a1name} a1id {a1id}')
+                    if geom is not None:
+                        c = geom.Centroid()
+                        a2id = latlon2id(
+                                             lon=c.GetX(),
+                                             lat=c.GetY(),
+                                             precision=precision
+                                             )
 
-                    #srca1.write(f'{a1name},{aid}\n')
+                        fa2id = int(f'{a0id}{a1id}{a2id}')
 
+                        #print(f'a1name: {a1name} a1id {a1id} a2name {a2name} a2id {a2id}')
+
+                        print(f'\t\t{a2name} {fa2id}')
+
+                        srca1.write(f'{olda2id},{fa2id}\n')
+                        #break
                 l.SetAttributeFilter(None)
                 l.ResetReading()
-                break
+
+                #break
             #break
-        break
 
     del ds
     return thel
@@ -241,11 +275,11 @@ if __name__ == '__main__':
     adm1_path = '/data/hreaibm/admfieldmaps/adm1_simpl.shp'
     adm2_path = '/data/hreaibm/admfieldmaps/adm2_simpl.shp'
 
-    l1 = read_adm1(src_path=adm1_path)
+    #l1 = read_adm1(src_path=adm1_path)
     l2 = read_adm2(src_path=adm2_path)
-    for i in range(len(l1)):
-        print(l1[i], l2[i], l1[i] == l2[i])
-
+    # for i in range(len(l1)):
+    #     print(l1[i], l2[i], l1[i] == l2[i])
+    #
 
 
 
