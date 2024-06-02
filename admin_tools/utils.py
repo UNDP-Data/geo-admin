@@ -43,40 +43,11 @@ def get_field(src_path_or_ds=None, layer_name=None, field_name=None, unique=Fals
     else:
         return list(field_vals)
 
-def float_to_fixed(val, precision=1e6):
-    """Convert a floating point number to a fixed point integer."""
-    return int(round(val * precision))
+def scale_pos(longitude):
+    return (longitude + 180) / 4.5 + 10
 
-def fixed_to_float(val, precision=1e6):
-    """Convert a fixed point integer back to a floating point number."""
-    return val / precision
-def encode(lat, lon, precision=1e6):
-    """Encode latitude and longitude to a single positive integer."""
-    # Define a bias to ensure all values are positive
-    bias = 2 ** 31
-
-    # Scale and convert to fixed point
-    lat_fixed = float_to_fixed(lat, precision) + bias
-    lon_fixed = float_to_fixed(lon, precision) + bias
-
-    # Combine them into a single integer
-    encoded = (lat_fixed << 32) | lon_fixed
-    return encoded
-
-
-def decode(encoded, precision=1e6):
-    """Decode a single positive integer back to latitude and longitude."""
-    # Define a bias to ensure all values are positive
-    bias = 2 ** 31
-
-    # Extract lat_fixed and lon_fixed from the encoded integer
-    lat_fixed = (encoded >> 32) - bias
-    lon_fixed = (encoded & 0xFFFFFFFF) - bias
-
-    # Convert back to float
-    lat = fixed_to_float(lat_fixed, precision)
-    lon = fixed_to_float(lon_fixed, precision)
-    return lat, lon
+def unscale_pos(new_longitude):
+    return ((new_longitude - 10) * 4.5) - 180
 
 def get_iso3_ccodes():
     pass
@@ -89,7 +60,7 @@ if __name__ == '__main__':
     from admin_tools.uniqueid import lonlat2id, id2lonlat
 
     # Example usage
-    lon, lat = -.419452341, -.77495678
+    lon, lat = -169.33259181615757, -34.55406470337032
 
     llid = lonlat2id(lon=lon, lat=lat, precision=3)
     print(f"Original: (lon: {lon}, lat: {lat})")

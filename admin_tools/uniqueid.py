@@ -58,21 +58,15 @@ def admin0_id2iso3(admin0id=None):
     chunk_size = idlen//3
     return ''.join(map(chr, map(int, (strid[idx: idx + chunk_size] for idx in range(0, idlen, chunk_size)))))
 
-def scale_lon(longitude_180):
-    return (longitude_180 + 360) % 360
+def scale_pos(number):
+    """rescale tgo interval 10:99"""
+    #return (number + 180) / 4.5 + 10
+    return ((number + 180) * 89 / 360) + 10
 
-def unscale_lon(longitude_360):
-
-    if longitude_360 > 180:
-        return longitude_360 - 360
-    else:
-        return longitude_360
-
-def scale_lat(lat_90):
-    return lat_90 + 90
-def unscale_lat(lat_180):
-    return lat_180 - 90
-
+def unscale_pos(number):
+    """unscale from interval 10:90"""
+    #return ((number - 10) * 4.5) - 180
+    return ((number - 10) * 360 / 89) - 180
 def id2lonlat(intid=None):
     """
     Coverting an admin id derived using lonlat2id into its original lon and lat coodinates
@@ -87,17 +81,15 @@ def id2lonlat(intid=None):
     """
     sid = str(intid)
     sidlen = len(sid)
-    assert sidlen % 2 == 0, f'Invalid intid={intid}'
+    assert sidlen % 2 == 0, f'Invalid intid={intid}. Needs to have an even number of digits '
     silon = sid[:sidlen//2]
     silat = sid[sidlen//2:]
-    nzeros = len(silon)-3 # 3 because the integer part of positive lon/lat can take max 3 digits
+    nzeros = len(silon)-2 # 3 because the integer part of positive lon/lat can take max 3 digits
     precision = 10**nzeros
     poslon = int(silon)/precision
     poslat = int(silat)/precision
-    return unscale_lon(poslon), unscale_lat(poslat)
+    return unscale_pos(poslon), unscale_pos(poslat)
 
-
-    return 0, 0
 def lonlat2id(lon=None, lat=None, precision=3):
     """
     Create an id form 2 float lon&lat coordinates by scaling to
@@ -118,16 +110,13 @@ def lonlat2id(lon=None, lat=None, precision=3):
     :param precision: integer, the number of digits to be retained from teh lon and lat
     :return: admin id as int
     """
-
-    poslon = scale_lon(lon)
-    poslat = scale_lat(lat)
-    ilon = int(poslon//10**-precision)
-    ilat = int(poslat//10**-precision)
-    # ilon = int(poslon*10**precision)
-    # ilat = int(poslat*10**precision)
-    silon = f'{ilon:>0{3+precision}d}'
-    silat = f'{ilat:>0{3+precision}d}'
-    return int(f'{silon}{silat}')
+    poslon = scale_pos(lon)
+    poslat = scale_pos(lat)
+    # ilon = int(poslon//10**-precision)
+    # ilat = int(poslat//10**-precision)
+    ilon = int(poslon*10**precision)
+    ilat = int(poslat*10**precision)
+    return int(f'{ilon}{ilat}')
 
 
 
@@ -194,7 +183,7 @@ def read_adm1(src_path=None):
                 a1id = lonlat2id(
                                      lon=c.GetX(),
                                      lat=c.GetY(),
-                                     precision=1e3
+                                     precision=3
                                      )
                 ea1id = encode_base36(a1id)
                 ra1id = decode_base36(ea1id)
@@ -226,9 +215,9 @@ def dissolve(lyr=None):
     return multi
 
 
-def read_adm2(src_path=None, precision=3):
+def read_adm2(src_path=None, precision=4):
 
-    assert str(int(precision)).count("0")<7, 'precision is invalid'
+    #assert str(int(precision)).count("0")<7, 'precision is invalid'
     thel = list()
     ds = gdal.OpenEx(src_path)
     l = ds.GetLayer(0)
@@ -249,7 +238,9 @@ def read_adm2(src_path=None, precision=3):
 
             adm1_geom = dissolve(lyr=l)
             adm1_centroid = adm1_geom.Centroid()
+
             a1id = lonlat2id(lon=adm1_centroid.GetX(), lat=adm1_centroid.GetY(), precision=precision)
+
             #thel.append(a1id)
             print(f'\t{admin1id} {a1id} ')
             for feature in l:
