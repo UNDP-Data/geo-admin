@@ -20,45 +20,6 @@ places  degrees                       recognized at this scale                 a
 
 import math
 
-def map_int(n):
-    return 2 * abs(n) if n >= 0 else 2 * abs(n) - 1
-
-def unmap_int(m):
-    return m // 2 if m % 2 == 0 else -(m // 2) - 1
-
-def cantor_encode(x, y):
-    """
-    Ecode two integer number to a positive number using Cantor's pairing
-    funcntion
-    :param x:
-    :param y:
-    :return:
-    """
-    mapped_x = map_int(x)
-    mapped_y = map_int(y)
-    return (mapped_x + mapped_y) * (mapped_x + mapped_y + 1) // 2 + mapped_y
-
-def cantor_decode(z):
-    """
-    Decode an integer number into two integers suing invers or Cantor's pairing function
-
-    :param z:
-    :return:
-    """
-    w = math.floor((math.sqrt(8 * z + 1) - 1) / 2)
-    t = (w * (w + 1)) // 2
-    mapped_y = z - t
-    mapped_x = w - mapped_y
-    x = unmap_int(mapped_x)
-    y = unmap_int(mapped_y)
-    return x, y
-
-
-def get_precision(cantor_encoded_coords=None):
-    ndigits = len(str(cantor_encoded_coords))
-    print(ndigits)
-    return int((ndigits-2)//2)
-
 
 def encode_base36(num):
     """Encode a number in base-36 with padding."""
@@ -97,22 +58,77 @@ def admin0_id2iso3(admin0id=None):
     chunk_size = idlen//3
     return ''.join(map(chr, map(int, (strid[idx: idx + chunk_size] for idx in range(0, idlen, chunk_size)))))
 
+def scale_lon(longitude_180):
+    return (longitude_180 + 360) % 360
 
-def latlon2id(lon=None, lat=None, precision=1e3):
+def unscale_lon(longitude_360):
+
+    if longitude_360 > 180:
+        return longitude_360 - 360
+    else:
+        return longitude_360
+
+def scale_lat(lat_90):
+    return lat_90 + 90
+def unscale_lat(lat_180):
+    return lat_180 - 90
+
+def id2lonlat(intid=None):
     """
-    Create an id form 2 float lat lon cooords by divind using  1/precision
-    flooring to integer and encoding.
-    Precision can not be more than 6
-
-    :param lon:
-    :param lat:
-    :param precision:
+    Coverting an admin id derived using lonlat2id into its original lon and lat coodinates
+    accounting for loss of precision
+    The Number is converted to string, split into two equal parts corresponding to positive lon and lat
+    . Next precision is extracted consdering that each of the positive coords contains 3 digist for integer part
+    and the rest anre represented by precision. The positive lon/lat are divided by precision
+    and unscaled from positive to ofriginla range that is -180:+180 for longitude
+    and -90:+90 for latitude
+    :param intid:
     :return:
     """
+    sid = str(intid)
+    sidlen = len(sid)
+    assert sidlen % 2 == 0, f'Invalid intid={intid}'
+    silon = sid[:sidlen//2]
+    silat = sid[sidlen//2:]
+    nzeros = len(silon)-3 # 3 because the integer part of positive lon/lat can take max 3 digits
+    precision = 10**nzeros
+    poslon = int(silon)/precision
+    poslat = int(silat)/precision
+    return unscale_lon(poslon), unscale_lat(poslat)
 
-    xrel = int(lon // (1 / precision))
-    yrel = int(lat // (1 / precision))
-    return cantor_encode(xrel, yrel)
+
+    return 0, 0
+def lonlat2id(lon=None, lat=None, precision=3):
+    """
+    Create an id form 2 float lon&lat coordinates by scaling to
+    positive (0-360) for lon and 0-180 for lat, multiplying by
+    10 at the power of precision, converting to int using integer division
+    , padding with three zeros to account for new scaled lon/lat values and
+    combining lon and lat into a string and converting one more time to int
+
+    Using integer division the coordinates are floored and rounded using the provided precision. This
+    ensures that small change in the input coordinates will produce more or less same output.
+    This is done to be able to join these ids to future version of admin units  whose geometry has been slightly altered
+
+
+
+
+    :param lon: float, longitude of admin centroid
+    :param lat: float, latitude of admin centroid
+    :param precision: integer, the number of digits to be retained from teh lon and lat
+    :return: admin id as int
+    """
+
+    poslon = scale_lon(lon)
+    poslat = scale_lat(lat)
+    ilon = int(poslon//10**-precision)
+    ilat = int(poslat//10**-precision)
+    # ilon = int(poslon*10**precision)
+    # ilat = int(poslat*10**precision)
+    silon = f'{ilon:>0{3+precision}d}'
+    silat = f'{ilat:>0{3+precision}d}'
+    return int(f'{silon}{silat}')
+
 
 
 
@@ -175,7 +191,7 @@ def read_adm1(src_path=None):
 
             if geom is not None:
                 c = geom.Centroid()
-                a1id = latlon2id(
+                a1id = lonlat2id(
                                      lon=c.GetX(),
                                      lat=c.GetY(),
                                      precision=1e3
@@ -210,7 +226,7 @@ def dissolve(lyr=None):
     return multi
 
 
-def read_adm2(src_path=None, precision=1e3):
+def read_adm2(src_path=None, precision=3):
 
     assert str(int(precision)).count("0")<7, 'precision is invalid'
     thel = list()
@@ -218,53 +234,53 @@ def read_adm2(src_path=None, precision=1e3):
     l = ds.GetLayer(0)
     iso3_codes_l = [f.GetField('iso_3_grp') for f in l]
     iso3_codes = set(iso3_codes_l)
-    with open('/data/hreaibm/admfieldmaps/a2.csv', 'w') as srca1:
-        srca1.write(f'adm2_id,a2id\n' )
-        for cc in sorted(iso3_codes):
-            #convert iso3 code to int using ord functions
-            #if cc != 'AUS':continue
-            a0id = admin0_iso32id(iso3_country_code=cc)
-            l.SetAttributeFilter(f"iso_3_grp='{cc}'")
+    # with open('/data/hreaibm/admfieldmaps/a2.csv', 'w') as srca1:
+    #     srca1.write(f'adm2_id,a2id\n' )
+    for cc in sorted(iso3_codes):
+        #convert iso3 code to int using ord functions
+        if cc != 'AFG':continue
+        a0id = admin0_iso32id(iso3_country_code=cc)
+        l.SetAttributeFilter(f"iso_3_grp='{cc}'")
 
-            adm1_ids = sorted(set([f.GetField('adm1_id') for f in l]))
-            print(f'{cc} {a0id}')
-            for admin1id in adm1_ids:
-                l.SetAttributeFilter(f"adm1_id='{admin1id}'")
+        adm1_ids = sorted(set([f.GetField('adm1_id') for f in l]))
+        print(f'{cc} {a0id}')
+        for admin1id in adm1_ids:
+            l.SetAttributeFilter(f"adm1_id='{admin1id}'")
 
-                adm1_geom = dissolve(lyr=l)
-                adm1_centroid = adm1_geom.Centroid()
-                a1id = latlon2id(lon=adm1_centroid.GetX(), lat=adm1_centroid.GetY(), precision=precision)
-                #thel.append(a1id)
-                print(f'\t{admin1id} {a1id} ')
-                for feature in l:
+            adm1_geom = dissolve(lyr=l)
+            adm1_centroid = adm1_geom.Centroid()
+            a1id = lonlat2id(lon=adm1_centroid.GetX(), lat=adm1_centroid.GetY(), precision=precision)
+            #thel.append(a1id)
+            print(f'\t{admin1id} {a1id} ')
+            for feature in l:
 
-                    olda2id = feature.GetField('adm2_id')
-                    a1name = feature.GetField('adm1_name')
-                    a2name = feature.GetField('adm2_name')
+                olda2id = feature.GetField('adm2_id')
+                a1name = feature.GetField('adm1_name')
+                a2name = feature.GetField('adm2_name')
 
-                    geom = feature.GetGeometryRef()
+                geom = feature.GetGeometryRef()
 
-                    if geom is not None:
-                        c = geom.Centroid()
-                        a2id = latlon2id(
-                                             lon=c.GetX(),
-                                             lat=c.GetY(),
-                                             precision=precision
-                                             )
+                if geom is not None:
+                    c = geom.Centroid()
+                    a2id = lonlat2id(
+                                         lon=c.GetX(),
+                                         lat=c.GetY(),
+                                         precision=precision
+                                         )
 
-                        fa2id = int(f'{a0id}{a1id}{a2id}')
+                    fa2id = int(f'{a0id}{a1id}{a2id}')
 
-                        #print(f'a1name: {a1name} a1id {a1id} a2name {a2name} a2id {a2id}')
+                    #print(f'a1name: {a1name} a1id {a1id} a2name {a2name} a2id {a2id}')
 
-                        print(f'\t\t{a2name} {fa2id}')
+                    print(f'\t\t{a2name} {fa2id}')
 
-                        srca1.write(f'{olda2id},{fa2id}\n')
-                        #break
-                l.SetAttributeFilter(None)
-                l.ResetReading()
+                    #srca1.write(f'{olda2id},{fa2id}\n')
+                    #break
+            l.SetAttributeFilter(None)
+            l.ResetReading()
 
-                #break
             #break
+        #break
 
     del ds
     return thel
