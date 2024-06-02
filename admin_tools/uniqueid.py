@@ -72,10 +72,9 @@ def id2lonlat(intid=None):
     Coverting an admin id derived using lonlat2id into its original lon and lat coodinates
     accounting for loss of precision
     The Number is converted to string, split into two equal parts corresponding to positive lon and lat
-    . Next precision is extracted consdering that each of the positive coords contains 3 digist for integer part
+    . Next precision is extracted consdering that each of the positive coords contains 3 digits for integer part
     and the rest anre represented by precision. The positive lon/lat are divided by precision
-    and unscaled from positive to ofriginla range that is -180:+180 for longitude
-    and -90:+90 for latitude
+    and unscaled from positive range [10:99] to original ranges
     :param intid:
     :return:
     """
@@ -93,7 +92,7 @@ def id2lonlat(intid=None):
 def lonlat2id(lon=None, lat=None, precision=3):
     """
     Create an id form 2 float lon&lat coordinates by scaling to
-    positive (0-360) for lon and 0-180 for lat, multiplying by
+    positive 10:99 , multiplying by
     10 at the power of precision, converting to int using integer division
     , padding with three zeros to account for new scaled lon/lat values and
     combining lon and lat into a string and converting one more time to int
