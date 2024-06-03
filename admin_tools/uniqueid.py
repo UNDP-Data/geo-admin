@@ -2,6 +2,7 @@ from osgeo import gdal, ogr
 gdal.UseExceptions()
 
 '''
+
 ------------------------------------------------------------------------------------------------------------------------
 decimal decimal     DMS              Object that can be unambiguously         N/S or E/W   E/W at      E/W at       E/W at 
 places  degrees                       recognized at this scale                 at equator    23N/S      45N/S       67N/S
@@ -64,7 +65,7 @@ def scale_pos(number):
     return ((number + 180) * 89 / 360) + 10
 
 def unscale_pos(number):
-    """unscale from interval 10:90"""
+    """unscale from interval 10:99"""
     #return ((number - 10) * 4.5) - 180
     return ((number - 10) * 360 / 89) - 180
 def id2lonlat(intid=None):
@@ -73,7 +74,7 @@ def id2lonlat(intid=None):
     accounting for loss of precision
     The Number is converted to string, split into two equal parts corresponding to positive lon and lat
     . Next precision is extracted consdering that each of the positive coords contains 3 digits for integer part
-    and the rest anre represented by precision. The positive lon/lat are divided by precision
+    and the rest are represented by precision. The positive lon/lat are divided by precision
     and unscaled from positive range [10:99] to original ranges
     :param intid:
     :return:
@@ -111,10 +112,10 @@ def lonlat2id(lon=None, lat=None, precision=3):
     """
     poslon = scale_pos(lon)
     poslat = scale_pos(lat)
-    # ilon = int(poslon//10**-precision)
-    # ilat = int(poslat//10**-precision)
-    ilon = int(poslon*10**precision)
-    ilat = int(poslat*10**precision)
+    ilon = int(poslon//10**-precision)
+    ilat = int(poslat//10**-precision)
+    # ilon = int(poslon*10**precision)
+    # ilat = int(poslat*10**precision)
     return int(f'{ilon}{ilat}')
 
 
@@ -214,7 +215,7 @@ def dissolve(lyr=None):
     return multi
 
 
-def read_adm2(src_path=None, precision=4):
+def read_adm2(src_path=None, precision=2):
 
     #assert str(int(precision)).count("0")<7, 'precision is invalid'
     thel = list()
@@ -226,7 +227,7 @@ def read_adm2(src_path=None, precision=4):
     #     srca1.write(f'adm2_id,a2id\n' )
     for cc in sorted(iso3_codes):
         #convert iso3 code to int using ord functions
-        if cc != 'AFG':continue
+        #if cc != 'AFG':continue
         a0id = admin0_iso32id(iso3_country_code=cc)
         l.SetAttributeFilter(f"iso_3_grp='{cc}'")
 
