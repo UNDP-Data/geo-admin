@@ -62,7 +62,7 @@ if __name__ == '__main__':
     # Example usage
     lon, lat = -169.33259181615757, -34.55406470337032
 
-    llid = lonlat2id(lon=lon, lat=lat, precision=2)
+    llid = lonlat2id(lon=lon, lat=lat, precision=3)
     print(f"Original: (lon: {lon}, lat: {lat})")
     print(llid, len(str(llid)))
     rlon, rlat = id2lonlat(llid)
