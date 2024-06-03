@@ -2,6 +2,7 @@ from osgeo import gdal, ogr
 gdal.UseExceptions()
 
 '''
+
 ------------------------------------------------------------------------------------------------------------------------
 decimal decimal     DMS              Object that can be unambiguously         N/S or E/W   E/W at      E/W at       E/W at 
 places  degrees                       recognized at this scale                 at equator    23N/S      45N/S       67N/S
@@ -18,25 +19,8 @@ places  degrees                       recognized at this scale                 a
 -------------------------------------------------------------------------------------------------------------------------
 '''
 
-def interleave_bits(x, y):
-    """Interleave bits of two integers."""
-    result = 0
-    for i in range(max(x.bit_length(), y.bit_length())):
-        result |= ((x >> i) & 1) << (2 * i)
-        result |= ((y >> i) & 1) << (2 * i + 1)
-    return result
 
 
-def deinterleave_bits(result):
-    """De-interleave bits of an integer to reconstruct two original integers."""
-    x = 0
-    y = 0
-    for i in range(result.bit_length()):
-        if i % 2 == 0:
-            x |= ((result >> i) & 1) << (i // 2)
-        else:
-            y |= ((result >> i) & 1) << (i // 2)
-    return x, y
 
 def encode_base36(num):
     """Encode a number in base-36 with padding."""
@@ -75,15 +59,65 @@ def admin0_id2iso3(admin0id=None):
     chunk_size = idlen//3
     return ''.join(map(chr, map(int, (strid[idx: idx + chunk_size] for idx in range(0, idlen, chunk_size)))))
 
+def scale_pos(number):
+    """rescale tgo interval 10:99"""
+    #return (number + 180) / 4.5 + 10
+    return ((number + 180) * 89 / 360) + 10
 
-def centroid2id(
-                  x_centroid=None,
-                  y_centroid=None,
-                  precision=1e3):
-    #print(x_centroid, y_centroid)
-    xrel = int(x_centroid // (1/precision))
-    yrel = int(y_centroid // (1/precision))
-    return interleave_bits(xrel, yrel)
+def unscale_pos(number):
+    """unscale from interval 10:99"""
+    #return ((number - 10) * 4.5) - 180
+    return ((number - 10) * 360 / 89) - 180
+def id2lonlat(intid=None):
+    """
+    Coverting an admin id derived using lonlat2id into its original lon and lat coodinates
+    accounting for loss of precision
+    The Number is converted to string, split into two equal parts corresponding to positive lon and lat
+    . Next precision is extracted consdering that each of the positive coords contains 3 digits for integer part
+    and the rest are represented by precision. The positive lon/lat are divided by precision
+    and unscaled from positive range [10:99] to original ranges
+    :param intid:
+    :return:
+    """
+    sid = str(intid)
+    sidlen = len(sid)
+    assert sidlen % 2 == 0, f'Invalid intid={intid}. Needs to have an even number of digits '
+    silon = sid[:sidlen//2]
+    silat = sid[sidlen//2:]
+    nzeros = len(silon)-2 # 3 because the integer part of positive lon/lat can take max 3 digits
+    precision = 10**nzeros
+    poslon = int(silon)/precision
+    poslat = int(silat)/precision
+    return unscale_pos(poslon), unscale_pos(poslat)
+
+def lonlat2id(lon=None, lat=None, precision=3):
+    """
+    Create an id form 2 float lon&lat coordinates by scaling to
+    positive 10:99 , multiplying by
+    10 at the power of precision, converting to int using integer division
+    , padding with three zeros to account for new scaled lon/lat values and
+    combining lon and lat into a string and converting one more time to int
+
+    Using integer division the coordinates are floored and rounded using the provided precision. This
+    ensures that small change in the input coordinates will produce more or less same output.
+    This is done to be able to join these ids to future version of admin units  whose geometry has been slightly altered
+
+
+
+
+    :param lon: float, longitude of admin centroid
+    :param lat: float, latitude of admin centroid
+    :param precision: integer, the number of digits to be retained from teh lon and lat
+    :return: admin id as int
+    """
+    poslon = scale_pos(lon)
+    poslat = scale_pos(lat)
+    ilon = int(poslon//10**-precision)
+    ilat = int(poslat//10**-precision)
+    # ilon = int(poslon*10**precision)
+    # ilat = int(poslat*10**precision)
+    return int(f'{ilon}{ilat}')
+
 
 
 
@@ -146,10 +180,10 @@ def read_adm1(src_path=None):
 
             if geom is not None:
                 c = geom.Centroid()
-                a1id = centroid2id(
-                                     x_centroid=c.GetX(),
-                                     y_centroid=c.GetY(),
-                                     precision=1e3
+                a1id = lonlat2id(
+                                     lon=c.GetX(),
+                                     lat=c.GetY(),
+                                     precision=3
                                      )
                 ea1id = encode_base36(a1id)
                 ra1id = decode_base36(ea1id)
@@ -181,28 +215,34 @@ def dissolve(lyr=None):
     return multi
 
 
-def read_adm2(src_path=None):
+def read_adm2(src_path=None, precision=2):
+
+    #assert str(int(precision)).count("0")<7, 'precision is invalid'
     thel = list()
     ds = gdal.OpenEx(src_path)
     l = ds.GetLayer(0)
     iso3_codes_l = [f.GetField('iso_3_grp') for f in l]
     iso3_codes = set(iso3_codes_l)
-    #with open('/data/hreaibm/admfieldmaps/a1.csv', 'w') as srca1:
-        #srca1.write(f'admin1_name,a1id\n' )
+    # with open('/data/hreaibm/admfieldmaps/a2.csv', 'w') as srca1:
+    #     srca1.write(f'adm2_id,a2id\n' )
     for cc in sorted(iso3_codes):
         #convert iso3 code to int using ord functions
-
+        #if cc != 'AFG':continue
         a0id = admin0_iso32id(iso3_country_code=cc)
         l.SetAttributeFilter(f"iso_3_grp='{cc}'")
 
         adm1_ids = sorted(set([f.GetField('adm1_id') for f in l]))
-        print(f'{cc} : {a0id}')
+        print(f'{cc} {a0id}')
         for admin1id in adm1_ids:
             l.SetAttributeFilter(f"adm1_id='{admin1id}'")
+
             adm1_geom = dissolve(lyr=l)
             adm1_centroid = adm1_geom.Centroid()
-            a1id = centroid2id(x_centroid=adm1_centroid.GetX(), y_centroid=adm1_centroid.GetY(), precision=1e3)
-            thel.append(a1id)
+
+            a1id = lonlat2id(lon=adm1_centroid.GetX(), lat=adm1_centroid.GetY(), precision=precision)
+
+            #thel.append(a1id)
+            print(f'\t{admin1id} {a1id} ')
             for feature in l:
 
                 olda2id = feature.GetField('adm2_id')
@@ -213,24 +253,25 @@ def read_adm2(src_path=None):
 
                 if geom is not None:
                     c = geom.Centroid()
-                    a2id = centroid2id(
-                                         x_centroid=c.GetX(),
-                                         y_centroid=c.GetY(),
-                                         precision=1e3
+                    a2id = lonlat2id(
+                                         lon=c.GetX(),
+                                         lat=c.GetY(),
+                                         precision=precision
                                          )
-                    ea2id = encode_base36(a2id)
-                    ra2id = decode_base36(ea2id)
-                    assert a2id == ra2id
+
+                    fa2id = int(f'{a0id}{a1id}{a2id}')
+
                     #print(f'a1name: {a1name} a1id {a1id} a2name {a2name} a2id {a2id}')
-                    print(f'adm1name {a1name} a1id {a1id}')
 
-                    #srca1.write(f'{a1name},{aid}\n')
+                    print(f'\t\t{a2name} {fa2id}')
 
-                l.SetAttributeFilter(None)
-                l.ResetReading()
-                break
+                    #srca1.write(f'{olda2id},{fa2id}\n')
+                    #break
+            l.SetAttributeFilter(None)
+            l.ResetReading()
+
             #break
-        break
+        #break
 
     del ds
     return thel
@@ -241,11 +282,11 @@ if __name__ == '__main__':
     adm1_path = '/data/hreaibm/admfieldmaps/adm1_simpl.shp'
     adm2_path = '/data/hreaibm/admfieldmaps/adm2_simpl.shp'
 
-    l1 = read_adm1(src_path=adm1_path)
+    #l1 = read_adm1(src_path=adm1_path)
     l2 = read_adm2(src_path=adm2_path)
-    for i in range(len(l1)):
-        print(l1[i], l2[i], l1[i] == l2[i])
-
+    # for i in range(len(l1)):
+    #     print(l1[i], l2[i], l1[i] == l2[i])
+    #
 
 
 
