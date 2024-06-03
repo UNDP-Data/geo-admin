@@ -1,2 +1,2 @@
 # geo-admin
-UNDP admin layhers at levels 0, 1 and 2
+UNDP admin layers at levels 0, 1 and 2
