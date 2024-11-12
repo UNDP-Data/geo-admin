@@ -57,13 +57,33 @@ if __name__ == '__main__':
                      status_cd=1)
 
     get_iso3_ccodes()
-    from admin_tools.uniqueid import lonlat2id, id2lonlat
+    from admin_tools import uniqueid as u
 
     # Example usage
     lon, lat = -169.33259181615757, -34.55406470337032
 
-    llid = lonlat2id(lon=lon, lat=lat, precision=3)
-    print(f"Original: (lon: {lon}, lat: {lat})")
-    print(llid, len(str(llid)))
-    rlon, rlat = id2lonlat(llid)
-    print(rlon, rlat)
+
+
+    # llid = u.lonlat2id(lon=lon, lat=lat, precision=3)
+    # print(f"Original: (lon: {lon}, lat: {lat})")
+    # print(llid, len(str(llid)))
+    # rlon, rlat = u.id2lonlat(llid)
+    # print(rlon, rlat)
+    import random
+    def test_precision_onepoint():
+
+        precisions = range(1,7)
+        random.seed(44)
+        rnumbers = [random.random() ** 2 * random.random() * random.choice([-1, 1]) for e in range(20)]
+        rnumbers = [1*10**-e for e in range(11)]
+        print('\n')
+        for p in precisions:
+            for i, r in enumerate(rnumbers, start=1):
+                aid = u.lonlat2id(lon=lon, lat=lat, precision=p)
+                aidr = u.lonlat2id(lon=lon+r, lat=lat+r, precision=p)
+                if aidr != aid:
+                    print(p, r, aid,aidr, aid==aidr)
+
+
+            print('-'*30)
+    test_precision_onepoint()

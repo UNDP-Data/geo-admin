@@ -61,13 +61,13 @@ def admin0_id2iso3(admin0id=None):
 
 def scale_pos(number):
     """rescale tgo interval 10:99"""
-    #return (number + 180) / 4.5 + 10
     return ((number + 180) * 89 / 360) + 10
+
 
 def unscale_pos(number):
     """unscale from interval 10:99"""
-    #return ((number - 10) * 4.5) - 180
     return ((number - 10) * 360 / 89) - 180
+
 def id2lonlat(intid=None):
     """
     Coverting an admin id derived using lonlat2id into its original lon and lat coodinates
@@ -112,10 +112,8 @@ def lonlat2id(lon=None, lat=None, precision=3):
     """
     poslon = scale_pos(lon)
     poslat = scale_pos(lat)
-    ilon = int(poslon//10**-precision)
-    ilat = int(poslat//10**-precision)
-    # ilon = int(poslon*10**precision)
-    # ilat = int(poslat*10**precision)
+    ilon = int(poslon*10**precision)
+    ilat = int(poslat*10**precision)
     return int(f'{ilon}{ilat}')
 
 
@@ -158,7 +156,7 @@ def calculate_extent(layer):
             maxY = max(maxY, geom_maxY)
 
     return (minX, maxX, minY, maxY)
-def read_adm1(src_path=None):
+def read_adm1(src_path=None, precision=2):
     thel = list()
     ds = gdal.OpenEx(src_path)
     l = ds.GetLayer(0)
@@ -183,13 +181,13 @@ def read_adm1(src_path=None):
                 a1id = lonlat2id(
                                      lon=c.GetX(),
                                      lat=c.GetY(),
-                                     precision=3
+                                     precision=precision
                                      )
                 ea1id = encode_base36(a1id)
                 ra1id = decode_base36(ea1id)
                 assert a1id == ra1id
                 aid = f'{cc}{ea1id}'
-                print(f'adm1name {a1name} a1id {a1id}')
+                print(f'adm1name {a1name} a1id {a1id} {c.GetX()} {c.GetY()}')
                 thel.append(a1id)
                 #srca1.write(f'{a1name},{aid}\n')
 
@@ -214,6 +212,19 @@ def dissolve(lyr=None):
     multi.UnionCascaded()
     return multi
 
+def add_id(src_path=None, layer_name=None, precision=2):
+    """
+    Add UNDPID to a vector polygon dataset
+    :param src_path:
+    :param precision:
+    :return:
+    """
+    ds = gdal.OpenEx(src_path)
+    if layer_name:
+        layer = ds.GetLayerByName(layer_name)
+    else:
+        layer = ds.GetLayer(0)
+
 
 def read_adm2(src_path=None, precision=2):
 
@@ -223,8 +234,7 @@ def read_adm2(src_path=None, precision=2):
     l = ds.GetLayer(0)
     iso3_codes_l = [f.GetField('iso_3_grp') for f in l]
     iso3_codes = set(iso3_codes_l)
-    # with open('/data/hreaibm/admfieldmaps/a2.csv', 'w') as srca1:
-    #     srca1.write(f'adm2_id,a2id\n' )
+
     for cc in sorted(iso3_codes):
         #convert iso3 code to int using ord functions
         #if cc != 'AFG':continue
@@ -281,12 +291,12 @@ if __name__ == '__main__':
 
     adm1_path = '/data/hreaibm/admfieldmaps/adm1_simpl.shp'
     adm2_path = '/data/hreaibm/admfieldmaps/adm2_simpl.shp'
+    ceeivt = '/data/hreaibm/admfieldmaps/ceeivt/global_ceei_final_2_20240618142311.gpkg'
+    l1 = read_adm1(src_path=adm1_path)
+    #l2 = read_adm2(src_path=adm2_path)
 
-    #l1 = read_adm1(src_path=adm1_path)
-    l2 = read_adm2(src_path=adm2_path)
-    # for i in range(len(l1)):
-    #     print(l1[i], l2[i], l1[i] == l2[i])
-    #
+
+
 
 
 
